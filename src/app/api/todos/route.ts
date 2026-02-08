@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-
-export const runtime = "edge";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 interface Todo {
 	id: number;
@@ -8,37 +7,71 @@ interface Todo {
 	completed: boolean;
 }
 
-// In-memory storage fallback for local development
-let inMemoryTodos: Todo[] = [];
+// Validation helper
+function isValidTodo(todo: any): todo is Todo {
+	return (
+		typeof todo === 'object' &&
+		typeof todo.id === 'number' &&
+		typeof todo.text === 'string' &&
+		typeof todo.completed === 'boolean'
+	);
+}
 
-// Helper to get KV namespace
-function getKV(): KVNamespace | null {
+function isValidTodos(todos: any): todos is Todo[] {
+	return Array.isArray(todos) && todos.every(isValidTodo);
+}
+
+// Safe JSON parse helper
+function safeJsonParse(data: string | null): Todo[] | null {
+	if (!data) return null;
 	try {
-		// In OpenNext/Cloudflare, bindings are available via process.env
-		const env = process.env as any;
-		if (env.TODO_KV) {
-			return env.TODO_KV as KVNamespace;
-		}
-		return null;
+		const parsed = JSON.parse(data);
+		return isValidTodos(parsed) ? parsed : null;
 	} catch (error) {
-		console.error("[KV] Error accessing binding:", error);
+		console.error("[KV] Invalid JSON data:", error);
 		return null;
 	}
+}
+
+// In-memory storage fallback for local development
+let inMemoryTodos: Todo[] = [];
+let cachedKV: KVNamespace | null = null;
+let kvInitialized = false;
+
+// Helper to initialize and cache KV namespace
+function initializeKV(): KVNamespace | null {
+	if (kvInitialized) return cachedKV;
+	
+	try {
+		console.log("Initializing KV namespace...");
+		const { env } = getCloudflareContext();
+		
+		if (env?.TODO_KV) {
+			console.log("[KV] Using KV storage");
+			cachedKV = env.TODO_KV as KVNamespace;
+		} else {
+			console.log("[KV] KV binding not found");
+			cachedKV = null;
+		}
+	} catch (error) {
+		console.error("[KV] Error accessing binding:", error);
+		cachedKV = null;
+	}
+	
+	kvInitialized = true;
+	return cachedKV;
 }
 
 // GET: Retrieve all todos
 export async function GET() {
 	try {
-		const kv = getKV();
-		
+		const kv = initializeKV();
+		console.log("[API] GET /api/todos");
 		if (kv) {
 			// KV is available, use it
 			const data = await kv.get("todos");
-			if (data) {
-				const todos = JSON.parse(data);
-				return NextResponse.json(todos);
-			}
-			return NextResponse.json([]);
+			const todos = safeJsonParse(data);
+			return NextResponse.json(todos || []);
 		} else {
 			// Fallback to in-memory for local dev
 			return NextResponse.json(inMemoryTodos);
@@ -52,8 +85,12 @@ export async function GET() {
 // POST: Save todos
 export async function POST(request: Request) {
 	try {
-		const todos = (await request.json()) as Todo[];
-		const kv = getKV();
+		const body = await request.json();
+		if (!isValidTodos(body)) {
+			return NextResponse.json({ success: false, error: "Invalid todo data" }, { status: 400 });
+		}
+		const todos = body;
+		const kv = initializeKV();
 		
 		if (kv) {
 			// KV is available, use it
@@ -66,6 +103,6 @@ export async function POST(request: Request) {
 		return NextResponse.json({ success: true });
 	} catch (error) {
 		console.error("[API] POST error:", error);
-		return NextResponse.json({ success: false }, { status: 500 });
+		return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
 	}
 }

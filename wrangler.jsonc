@@ -11,8 +11,7 @@
 	"kv_namespaces": [
 		{
 			"binding": "TODO_KV",
-			"id": "13727b23587941e6bd11e2cb8de5be6b",
-			"preview_id": "your_preview_kv_namespace_id"
+			"id": "13727b23587941e6bd11e2cb8de5be6b"
 		}
 	],
 	"observability": {
