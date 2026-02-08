@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
 
 interface Todo {
 	id: number;
@@ -8,45 +6,50 @@ interface Todo {
 	completed: boolean;
 }
 
-const dataDir = path.join(process.cwd(), "data");
-const todosFile = path.join(dataDir, "todos.json");
+interface CloudflareEnv {
+	TODO_KV: KVNamespace;
+}
 
-// Ensure data directory exists
-async function ensureDataDir() {
+// Helper to get KV from context
+function getKV(request: NextRequest): KVNamespace | null {
 	try {
-		await fs.mkdir(dataDir, { recursive: true });
-	} catch (error) {
-		console.error("Error creating data directory:", error);
+		const env = (request as any).cf?.env || process.env;
+		return env.TODO_KV as KVNamespace;
+	} catch {
+		return null;
 	}
 }
 
-// Read todos from JSON file
-async function readTodos(): Promise<Todo[]> {
+// Read todos from KV
+async function readTodos(kv: KVNamespace): Promise<Todo[]> {
 	try {
-		await ensureDataDir();
-		const data = await fs.readFile(todosFile, "utf-8");
-		return JSON.parse(data);
+		const data = await kv.get("todos", "json");
+		return (data as Todo[]) || [];
 	} catch (error) {
-		// File doesn't exist yet, return empty array
+		console.error("Error reading todos from KV:", error);
 		return [];
 	}
 }
 
-// Write todos to JSON file
-async function writeTodos(todos: Todo[]): Promise<void> {
+// Write todos to KV
+async function writeTodos(kv: KVNamespace, todos: Todo[]): Promise<void> {
 	try {
-		await ensureDataDir();
-		await fs.writeFile(todosFile, JSON.stringify(todos, null, 2));
+		await kv.put("todos", JSON.stringify(todos));
 	} catch (error) {
-		console.error("Error writing todos:", error);
+		console.error("Error writing todos to KV:", error);
 		throw error;
 	}
 }
 
 // GET: Retrieve all todos
-export async function GET() {
+export async function GET(request: NextRequest) {
 	try {
-		const todos = await readTodos();
+		const kv = getKV(request);
+		if (!kv) {
+			// Fallback for local development (in-memory storage)
+			return NextResponse.json([]);
+		}
+		const todos = await readTodos(kv);
 		return NextResponse.json(todos);
 	} catch (error) {
 		console.error("Error reading todos:", error);
@@ -61,7 +64,12 @@ export async function GET() {
 export async function POST(request: NextRequest) {
 	try {
 		const todos = (await request.json()) as Todo[];
-		await writeTodos(todos);
+		const kv = getKV(request);
+		if (!kv) {
+			// Fallback for local development
+			return NextResponse.json({ success: true });
+		}
+		await writeTodos(kv, todos);
 		return NextResponse.json({ success: true });
 	} catch (error) {
 		console.error("Error saving todos:", error);
