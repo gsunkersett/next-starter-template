@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const runtime = "edge";
+
 interface Todo {
 	id: number;
 	text: string;
@@ -31,7 +33,7 @@ export async function GET() {
 		
 		if (kv) {
 			// KV is available, use it
-			const data = await kv.get("todos", "text");
+			const data = await kv.get("todos");
 			if (data) {
 				const todos = JSON.parse(data);
 				return NextResponse.json(todos);
