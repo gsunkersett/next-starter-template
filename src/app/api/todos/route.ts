@@ -1,21 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "edge";
+
 interface Todo {
 	id: number;
 	text: string;
 	completed: boolean;
 }
 
-interface CloudflareEnv {
-	TODO_KV: KVNamespace;
+declare global {
+	// eslint-disable-next-line no-var
+	var TODO_KV: KVNamespace | undefined;
 }
 
-// Helper to get KV from context
-function getKV(request: NextRequest): KVNamespace | null {
+// Helper to get KV from Cloudflare bindings
+function getKV(): KVNamespace | null {
 	try {
-		const env = (request as any).cf?.env || process.env;
-		return env.TODO_KV as KVNamespace;
-	} catch {
+		// Access KV binding through process.env
+		const kv = (process.env as any).TODO_KV as KVNamespace | undefined;
+		return kv || null;
+	} catch (error) {
+		console.error("Error getting KV:", error);
 		return null;
 	}
 }
@@ -44,11 +49,13 @@ async function writeTodos(kv: KVNamespace, todos: Todo[]): Promise<void> {
 // GET: Retrieve all todos
 export async function GET(request: NextRequest) {
 	try {
-		const kv = getKV(request);
+		const kv = getKV();
 		if (!kv) {
+			console.log("KV not available - using empty state");
 			// Fallback for local development (in-memory storage)
 			return NextResponse.json([]);
 		}
+		console.log("KV available, reading todos");
 		const todos = await readTodos(kv);
 		return NextResponse.json(todos);
 	} catch (error) {
@@ -64,11 +71,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
 	try {
 		const todos = (await request.json()) as Todo[];
-		const kv = getKV(request);
+		const kv = getKV();
 		if (!kv) {
+			console.log("KV not available - skipping save");
 			// Fallback for local development
 			return NextResponse.json({ success: true });
 		}
+		console.log("KV available, saving todos");
 		await writeTodos(kv, todos);
 		return NextResponse.json({ success: true });
 	} catch (error) {
