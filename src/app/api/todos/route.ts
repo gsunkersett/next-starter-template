@@ -63,16 +63,17 @@ export async function GET(request: NextRequest) {
 		if (!kv) {
 			console.log("KV not available - using empty state");
 			// Fallback for local development (in-memory storage)
-			return NextResponse.json([]);
+			return NextResponse.json([], { status: 200 });
 		}
 		console.log("KV available, reading todos");
 		const todos = await readTodos(kv);
-		return NextResponse.json(todos);
+		console.log("Successfully read todos:", todos);
+		return NextResponse.json(todos, { status: 200 });
 	} catch (error) {
 		console.error("Error reading todos:", error);
 		return NextResponse.json(
-			{ error: "Failed to read todos" },
-			{ status: 500 }
+			[],
+			{ status: 200 }
 		);
 	}
 }

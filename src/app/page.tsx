@@ -17,11 +17,29 @@ export default function Home() {
 	useEffect(() => {
 		const loadTodos = async () => {
 			try {
+				console.log("Fetching todos from /api/todos");
 				const response = await fetch("/api/todos");
-				const data = (await response.json()) as Todo[];
-				setTodos(data);
+				console.log("Response status:", response.status);
+				
+				if (!response.ok) {
+					console.error("API returned error status:", response.status);
+					setTodos([]);
+					setIsLoading(false);
+					return;
+				}
+				
+				const data = await response.json();
+				console.log("Received todos:", data);
+				
+				if (Array.isArray(data)) {
+					setTodos(data);
+				} else {
+					console.error("Invalid data format:", data);
+					setTodos([]);
+				}
 			} catch (error) {
 				console.error("Error loading todos:", error);
+				setTodos([]);
 			} finally {
 				setIsLoading(false);
 			}
