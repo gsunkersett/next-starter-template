@@ -8,17 +8,24 @@ interface Todo {
 	completed: boolean;
 }
 
-declare global {
-	// eslint-disable-next-line no-var
-	var TODO_KV: KVNamespace | undefined;
-}
-
 // Helper to get KV from Cloudflare bindings
 function getKV(): KVNamespace | null {
 	try {
-		// Access KV binding through process.env
-		const kv = (process.env as any).TODO_KV as KVNamespace | undefined;
-		return kv || null;
+		const kv = (globalThis as any).TODO_KV as KVNamespace | undefined;
+		if (kv) {
+			console.log("KV found in globalThis");
+			return kv;
+		}
+
+		// Fallback to process.env
+		const kvEnv = (process.env as any).TODO_KV as KVNamespace | undefined;
+		if (kvEnv) {
+			console.log("KV found in process.env");
+			return kvEnv;
+		}
+
+		console.warn("TODO_KV binding not found");
+		return null;
 	} catch (error) {
 		console.error("Error getting KV:", error);
 		return null;
@@ -28,8 +35,11 @@ function getKV(): KVNamespace | null {
 // Read todos from KV
 async function readTodos(kv: KVNamespace): Promise<Todo[]> {
 	try {
-		const data = await kv.get("todos", "json");
-		return (data as Todo[]) || [];
+		const data = await kv.get("todos", { type: "json" });
+		if (!data) {
+			return [];
+		}
+		return Array.isArray(data) ? data : [];
 	} catch (error) {
 		console.error("Error reading todos from KV:", error);
 		return [];
