@@ -85,6 +85,8 @@ export async function GET() {
 // POST: Save todos
 export async function POST(request: Request) {
 	try {
+		console.log("[API] POST /api/todos");
+
 		const body = await request.json();
 		if (!isValidTodos(body)) {
 			return NextResponse.json({ success: false, error: "Invalid todo data" }, { status: 400 });
